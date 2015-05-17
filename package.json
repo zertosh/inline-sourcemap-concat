@@ -1,13 +1,13 @@
 {
-  "name": "fast-sourcemap-concat",
-  "version": "0.2.4",
-  "description": "Concatenate files while generating or propagating sourcemaps.",
+  "name": "inline-sourcemap-concat",
+  "version": "0.0.0",
+  "description": "Concatenate sources and inlined sourcemaps into a new generated sourcemap.",
   "main": "lib/index.js",
   "scripts": {
     "test": "mocha --inline-diffs"
   },
-  "repository": "https://github.com/ef4/fast-sourcemap-concat",
-  "author": "Edward Faulkner <ef@alum.mit.edu>",
+  "repository": "https://github.com/zertosh/inline-sourcemap-concat",
+  "author": "Andres Suarez <zertosh@gmail.com>",
   "license": "MIT",
   "dependencies": {
     "source-map-url": "^0.3.0"
