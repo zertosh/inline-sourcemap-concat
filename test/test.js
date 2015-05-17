@@ -1,261 +1,212 @@
-/* global describe, beforeEach, afterEach, it */
+/* global describe, it */
 var assert = require('chai').assert;
 var expect = require('chai').expect;
-var SourceMap = require('..');
-var RSVP = require('rsvp');
-RSVP.on('error', function(err){throw err;});
-var mkdirp = require('mkdirp');
+var SourceMapConcat = require('..');
 var fs = require('fs');
-var path = require('path');
-var rimraf = require('rimraf');
 var sinon = require('sinon');
 
 describe('fast sourcemap concat', function() {
-  var initialCwd;
-
-  beforeEach(function() {
-    initialCwd = process.cwd();
-    process.chdir(__dirname);
-    mkdirp('tmp');
-  });
-  afterEach(function() {
-    rimraf.sync('tmp');
-    process.chdir(initialCwd);
-  });
 
   it('should pass basic smoke test', function() {
-    var s = new SourceMap({outputFile: 'tmp/intermediate.js'});
-    s.addFile('fixtures/inner/first.js');
-    var filler = "'x';";
-    s.addSpace(filler);
-    s.addFile('fixtures/inner/second.js');
+    var s1 = SourceMapConcat.create();
+    s1.addFileSource('fixtures/inner/first.js',
+      inlineExternalMap('test/fixtures/inner/first.js'));
+    s1.addSpace("'x';");
+    s1.addFileSource('fixtures/inner/second.js',
+      inlineExternalMap('test/fixtures/inner/second.js'));
 
-    return s.end().then(function(){
-      s = new SourceMap({outputFile: 'tmp/intermediate2.js'});
-      s.addFile('fixtures/other/fourth.js');
-      return s.end();
-    }).then(function(){
-      s = new SourceMap({outputFile: 'tmp/final.js'});
-      s.addFile('tmp/intermediate.js');
-      s.addFile('fixtures/other/third.js');
-      s.addFile('tmp/intermediate2.js');
-      return s.end();
-    }).then(function(){
-      expectFile('final.js').in('tmp');
-      expectFile('final.map').in('tmp');
-    });
+    var s2 = SourceMapConcat.create();
+    s2.addFileSource('fixtures/other/fourth.js',
+      inlineExternalMap('test/fixtures/other/fourth.js'));
+
+    var s = SourceMapConcat.create({file: 'final.js'});
+    s.addFileSource('tmp/intermediate.js', s1.generate());
+    s.addFileSource('fixtures/other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
+    s.addFileSource('tmp/intermediate2.js', s2.generate());
+
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/final.js') );
   });
 
   it("should accept inline sourcemaps", function() {
-    var s = new SourceMap({outputFile: 'tmp/from-inline.js'});
-    s.addFile('fixtures/other/third.js');
+    var s = SourceMapConcat.create({file: 'from-inline.js'});
+    s.addFileSource('fixtures/other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
     s.addSpace("/* My First Separator */");
-    s.addFile('fixtures/inline-mapped.js');
+    s.addFileSource('fixtures/inline-mapped.js',
+      inlineExternalMap('test/fixtures/inline-mapped.js'));
     s.addSpace("/* My Second */");
-    s.addFile('fixtures/other/fourth.js');
-    return s.end().then(function(){
-      expectFile('from-inline.js').in('tmp');
-      expectFile('from-inline.map').in('tmp');
-    });
+    s.addFileSource('fixtures/other/fourth.js',
+      inlineExternalMap('test/fixtures/other/fourth.js'));
+
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/from-inline.js') );
   });
 
   it("should allow adding file contents from string", function() {
-    var filePath = 'fixtures/other/third.js';
-    var contents = fs.readFileSync(filePath, { encoding: 'utf8' });
-
-    var s = new SourceMap({outputFile: 'tmp/from-inline.js'});
-    s.addFileSource('fixtures/other/third.js', contents);
+    var s = SourceMapConcat.create({file: 'from-inline.js'});
+    s.addFileSource('fixtures/other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
     s.addSpace("/* My First Separator */");
-    s.addFile('fixtures/inline-mapped.js');
+    s.addFileSource('fixtures/inline-mapped.js',
+      inlineExternalMap('test/fixtures/inline-mapped.js'));
     s.addSpace("/* My Second */");
-    s.addFile('fixtures/other/fourth.js');
+    s.addFileSource('fixtures/other/fourth.js',
+      inlineExternalMap('test/fixtures/other/fourth.js'));
 
-    return s.end().then(function(){
-      expectFile('from-inline.js').in('tmp');
-      expectFile('from-inline.map').in('tmp');
-    });
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/from-inline.js') );
   });
 
   it("should correctly concatenate a sourcemapped coffeescript example", function() {
-    var s = new SourceMap({outputFile: 'tmp/coffee-example.js'});
-    s.addFile('fixtures/coffee/aa-loader.js');
-    s.addFile('fixtures/coffee/rewriter.js');
+    var s = SourceMapConcat.create({file:'coffee-example.js'});
+    s.addFileSource('fixtures/coffee/aa-loader.js',
+      inlineExternalMap('test/fixtures/coffee/aa-loader.js'));
+    s.addFileSource('fixtures/coffee/rewriter.js',
+      inlineExternalMap('test/fixtures/coffee/rewriter.js'));
     s.addSpace("/* My First Separator */");
-    s.addFile('fixtures/other/third.js');
-    return s.end().then(function(){
-      expectFile('coffee-example.js').in('tmp');
-      expectFile('coffee-example.map').in('tmp');
-    });
+    s.addFileSource('fixtures/other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
+
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/coffee-example.js') );
   });
 
   it("should discover external sources", function() {
-    var s = new SourceMap({outputFile: 'tmp/external-content.js', baseDir: path.join(__dirname, 'fixtures')});
-    s.addFile('other/third.js');
+    var s = SourceMapConcat.create({file: 'external-content.js'});
+    s.addFileSource('other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
     s.addSpace("/* My First Separator */");
-    s.addFile('external-content/all-inner.js');
+    s.addFileSource('external-content/all-inner.js',
+      inlineExternalMap('test/fixtures/external-content/all-inner.js'));
     s.addSpace("/* My Second */");
-    s.addFile('other/fourth.js');
-    return s.end().then(function(){
-      expectFile('external-content.js').in('tmp');
-      expectFile('external-content.map').in('tmp');
-    });
+    s.addFileSource('other/fourth.js',
+      inlineExternalMap('test/fixtures/other/fourth.js'));
+
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/external-content.js') );
   });
 
   it("should populate cache", function() {
     var cache = {};
-    var s = new SourceMap({outputFile: 'tmp/external-content.js', baseDir: path.join(__dirname, 'fixtures'), cache: cache});
-    s.addFile('other/third.js');
+    var s = SourceMapConcat.create({file: 'external-content.js', baseDir: 'fixtures', cache: cache});
+    s.addFileSource('other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
     s.addSpace("/* My First Separator */");
-    s.addFile('external-content/all-inner.js');
+    s.addFileSource('external-content/all-inner.js',
+      inlineExternalMap('test/fixtures/external-content/all-inner.js'));
     s.addSpace("/* My Second */");
-    s.addFile('other/fourth.js');
-    return s.end().then(function(){
-      expectFile('external-content.js').in('tmp');
-      expectFile('external-content.map').in('tmp');
-      assert.deepEqual(cache, {
-        "2a257e37006faed088631037626f5117": { encoder: "AEAAA", lines: 11 }
-      });
+    s.addFileSource('other/fourth.js',
+      inlineExternalMap('test/fixtures/other/fourth.js'));
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/external-content.js') );
+
+    assert.deepEqual(cache, {
+      "2a257e37006faed088631037626f5117": { encoder: "AEAAA", lines: 11 }
     });
   });
 
   it("should use cache", function() {
     var cache = {};
+    var s;
 
-    function once(finalFile){
-      var s = new SourceMap({cache: cache, outputFile: 'tmp/intermediate.js'});
-      s.addFile('fixtures/inner/first.js');
-      var filler = "'x';";
-      s.addSpace(filler);
-      s.addFile('fixtures/inner/second.js');
+    function once(finalFile) {
+      var s1 = SourceMapConcat.create();
+      s1.addFileSource('fixtures/inner/first.js',
+        inlineExternalMap('test/fixtures/inner/first.js'));
+      s1.addSpace("'x';");
+      s1.addFileSource('fixtures/inner/second.js',
+        inlineExternalMap('test/fixtures/inner/second.js'));
 
-      return s.end().then(function(){
-        s = new SourceMap({cache: cache, outputFile: 'tmp/intermediate2.js'});
-        s.addFile('fixtures/other/fourth.js');
-        return s.end();
-      }).then(function(){
-        s = new SourceMap({cache: cache, outputFile: 'tmp/' + finalFile});
-        sinon.spy(s, '_scanMappings');
-        s.addFile('tmp/intermediate.js');
-        s.addFile('fixtures/other/third.js');
-        s.addFile('tmp/intermediate2.js');
-        return s.end().then(function(){
-          return s._scanMappings;
-        });
-      });
+      var s2 = SourceMapConcat.create();
+      s2.addFileSource('fixtures/other/fourth.js',
+        inlineExternalMap('test/fixtures/other/fourth.js'));
+
+      s = SourceMapConcat.create({cache: cache, file: finalFile});
+      sinon.spy(s, '_scanMappings');
+      s.addFileSource('tmp/intermediate.js', s1.generate());
+      s.addFileSource('fixtures/other/third.js',
+        inlineExternalMap('test/fixtures/other/third.js'));
+      s.addFileSource('tmp/intermediate2.js', s2.generate());
     }
 
-    return once('firstPass.js').then(function(){
-      return once('final.js');
-    }).then(function(spy){
-      expectFile('final.js').in('tmp');
-      expectFile('final.map').in('tmp');
-      expect(spy.getCall(0).args[3], 'should receive cacheHint').to.be.ok();
-      expect(spy.getCall(1).args[3], 'should receive cacheHint').to.be.ok();
-    });
+    once('firstPass.js');
+    once('final.js');
+
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/final.js') );
+    expect(s._scanMappings.getCall(0).args[3], 'should receive cacheHint').to.be.ok();
+    expect(s._scanMappings.getCall(1).args[3], 'should receive cacheHint').to.be.ok();
   });
 
-  it("supports mapFile & mapURL", function() {
-    var s = new SourceMap({mapFile: 'tmp/maps/custom.map', mapURL: '/maps/custom.map', outputFile: 'tmp/assets/mapdird.js'});
-    s.addFile('fixtures/inner/first.js');
-    return s.end().then(function(){
-      expectFile('mapdird.js').in('tmp/assets');
-      expectFile('custom.map').in('tmp/maps');
-      s = new SourceMap({mapFile: 'tmp/maps/custom2.map', mapURL: '/maps/custom2.map', outputFile: 'tmp/assets/mapdird2.js', baseDir: path.resolve('tmp')});
-      s.addFile('assets/mapdird.js');
-      return s.end();
-    }).then(function(){
-      expectFile('mapdird2.js').in('tmp/assets');
-      expectFile('custom2.map').in('tmp/maps');
-    });
-  });
+  it.skip("supports mapFile & mapURL", function() {});
 
   it("outputs block comments when 'mapCommentType' is 'block'", function() {
-    var FILE = 'tmp/mapcommenttype.css';
-    var s = new SourceMap({outputFile: FILE, mapCommentType: 'block'});
-    return s.end().then(function() {
-      var result = fs.readFileSync(FILE, 'utf-8');
-      assert.equal(result, "/*# sourceMappingURL=mapcommenttype.css.map */");
-    });
+    var s = SourceMapConcat.create({mapCommentType: 'block'});
+    expect( s.generate() ).equals('/*# sourceMappingURL=data:application/json;charset:utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbXSwic291cmNlc0NvbnRlbnQiOltdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiIn0= */');
   });
 
-  it("should warn but tolerate broken sourcemap URL", function() {
-    var s = new SourceMap({outputFile: 'tmp/with-broken-input-map.js', baseDir: path.join(__dirname, 'fixtures')});
-    s._warn = sinon.spy();
-    s.addFile('other/third.js');
-    s.addSpace("/* My First Separator */");
-    s.addFile('external-content/broken-link.js');
-    s.addSpace("/* My Second */");
-    s.addFile('other/fourth.js');
-    return s.end().then(function(){
-      expectFile('with-broken-input-map.js').in('tmp');
-      expectFile('with-broken-input-map.map').in('tmp');
-      assert(s._warn.called, 'generates warning');
-    });
-  });
+  it.skip("should warn but tolerate broken sourcemap URL", function() {});
 
   it("corrects upstream sourcemap that is too short", function() {
-    var s = new SourceMap({outputFile: 'tmp/test-short.js'});
-    s.addFile('fixtures/other/third.js');
-    s.addFile('fixtures/short/rewriter.js');
-    s.addFile('fixtures/other/fourth.js');
-    return s.end().then(function(){
-      expectFile('test-short.js').in('tmp');
-      expectFile('test-short.map').in('tmp');
-    });
+    var s = SourceMapConcat.create({file: 'test-short.js'});
+    s.addFileSource('fixtures/other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
+    s.addFileSource('fixtures/short/rewriter.js',
+      inlineExternalMap('test/fixtures/short/rewriter.js'));
+    s.addFileSource('fixtures/other/fourth.js',
+      inlineExternalMap('test/fixtures/other/fourth.js'));
+
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/test-short.js') );
   });
 
   it("corrects upstream sourcemap that is too short, on cached second build", function() {
     var cache = {};
+    var s;
+
     function once() {
-      var s = new SourceMap({cache: cache, outputFile: 'tmp/test-short.js'});
-      s.addFile('fixtures/other/third.js');
-      s.addFile('fixtures/short/rewriter.js');
-      s.addFile('fixtures/other/fourth.js');
-      return s.end();
+      s = SourceMapConcat.create({cache: cache, file: 'test-short.js'});
+      s.addFileSource('fixtures/other/third.js',
+        inlineExternalMap('test/fixtures/other/third.js'));
+      s.addFileSource('fixtures/short/rewriter.js',
+        inlineExternalMap('test/fixtures/short/rewriter.js'));
+      s.addFileSource('fixtures/other/fourth.js',
+        inlineExternalMap('test/fixtures/other/fourth.js'));
     }
-    return once().then(once).then(function(){
-      expectFile('test-short.js').in('tmp');
-      expectFile('test-short.map').in('tmp');
-    });
+
+    once();
+    once();
+
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/test-short.js') );
   });
 
   it("deals with missing newline followed by single newline", function() {
-    var s = new SourceMap({outputFile: 'tmp/iife-wrapping.js'});
-    s.addFile('fixtures/other/fourth.js');
+    var s = SourceMapConcat.create({file: 'iife-wrapping.js'});
+    s.addFileSource('fixtures/other/fourth.js',
+      inlineExternalMap('test/fixtures/other/fourth.js'));
     s.addSpace('\n');
-    s.addFile('fixtures/iife-wrapping/iife-start');
+    s.addFileSource('fixtures/iife-wrapping/iife-start',
+      inlineExternalMap('test/fixtures/iife-wrapping/iife-start'));
     s.addSpace('\n');
-    s.addFile('fixtures/other/third.js');
+    s.addFileSource('fixtures/other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
     s.addSpace('\n');
-    s.addFile('fixtures/iife-wrapping/iife-end');
+    s.addFileSource('fixtures/iife-wrapping/iife-end',
+      inlineExternalMap('test/fixtures/iife-wrapping/iife-end'));
 
-    return s.end().then(function(){
-      expectFile('iife-wrapping.js').in('tmp');
-      expectFile('iife-wrapping.map').in('tmp');
-    });
-
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/iife-wrapping.js') );
   });
+
 });
 
-function expectFile(filename) {
-  var stripURL = false;
-  return {
-      in: function(dir) {
-        var actualContent = fs.readFileSync(path.join(dir, filename), 'utf-8');
-        fs.writeFileSync(path.join(__dirname, 'actual', filename), actualContent);
-
-        var expectedContent;
-        try {
-          expectedContent = fs.readFileSync(path.join(__dirname, 'expected', filename), 'utf-8');
-          if (stripURL) {
-            expectedContent = expectedContent.replace(/\/\/# sourceMappingURL=.*$/, '');
-          }
-
-        } catch (err) {
-          console.warn("Missing expcted file: " + path.join(__dirname, 'expected', filename));
-        }
-        expect(actualContent).equals(expectedContent, "discrepancy in " + filename);
-        return this;
-      }
+// on-the-fly external sourcemap inliner. allows using
+// fast-sourcemap-concat's tests against inline-sourcemap-concat.
+function inlineExternalMap(file) {
+  var FastSourcemapConcat = require('fast-sourcemap-concat');
+  FastSourcemapConcat.prototype._initializeStream = function() {
+    this.source = '';
+    this.stream = {write: function(add) { this.source += add; }.bind(this)};
   };
+  var src = fs.readFileSync(file, 'utf8');
+  if (SourceMapConcat.existsIn(src) && !SourceMapConcat.hasInline(src)) {
+    var sm = new FastSourcemapConcat({outputFile: file});
+    sm.mapCommentCharset = 'utf-8';
+    sm.addFileSource(file, src);
+    return sm.source + SourceMapConcat.SourceMap.prototype.comment.call(sm);
+  }
+  return src;
 }
