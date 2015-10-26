@@ -97,7 +97,9 @@ describe('fast sourcemap concat', function() {
     expect( s.generate() ).equals( inlineExternalMap('test/expected/external-content.js') );
 
     assert.deepEqual(cache, {
-      "2a257e37006faed088631037626f5117": { encoder: "AEAAA", lines: 11 }
+      // key is different in inline-source-concat vs fast-sourcemap-concat because
+      // the sourcemap for inline-source-cancat already has the sources embedded
+      "81fd1819ac38fd0ecddb56762a035e39": { encoder: "AEAAA", lines: 11 }
     });
   });
 
@@ -191,17 +193,77 @@ describe('fast sourcemap concat', function() {
     expect( s.generate() ).equals( inlineExternalMap('test/expected/iife-wrapping.js') );
   });
 
+  it("should tolerate input sourcemaps with fewer sourcesContent than sources", function() {
+    var s = SourceMapConcat.create({file: 'too-many-sources-out.js'});
+    s.addFileSource('fixtures/other/fourth.js',
+      inlineExternalMap('test/fixtures/other/fourth.js'));
+    s.addFileSource('fixtures/emptyish/too-many-sources.js',
+      inlineExternalMap('test/fixtures/emptyish/too-many-sources.js'));
+    s.addFileSource('fixtures/other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
+
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/too-many-sources-out.js') );
+  });
+
+  it("should tolerate input sourcemaps with more sourcesContent than sources", function() {
+    var s = SourceMapConcat.create({file: 'too-few-sources-out.js'});
+    s.addFileSource('fixtures/other/fourth.js',
+      inlineExternalMap('test/fixtures/other/fourth.js'));
+    s.addFileSource('fixtures/emptyish/too-few-sources.js',
+      inlineExternalMap('test/fixtures/emptyish/too-few-sources.js'));
+    s.addFileSource('fixtures/other/third.js',
+      inlineExternalMap('test/fixtures/other/third.js'));
+
+    expect( s.generate() ).equals( inlineExternalMap('test/expected/too-few-sources-out.js') );
+  });
+
+  it("should update when input source code is stable but sourcemap has changed", function() {
+    // This case occurs when the user makes non-semantic changes to
+    // their original source code, which therefore gets preprocessed
+    // into identical output that has a different sourceMap.
+
+    var cache = {};
+
+    var s1 = SourceMapConcat.create({file: 'hello-world-output.js', cache: cache});
+    s1.addFileSource('fixtures/inner/first.js',
+      inlineExternalMap('test/fixtures/inner/first.js'));
+    s1.addFileSource('hello-world.js',
+      inlineExternalMap('test/fixtures/typescript/hello-world-1.js'));
+    s1.addFileSource('fixtures/inner/second.js',
+      inlineExternalMap('test/fixtures/inner/second.js'));
+
+    var e1 = inlineExternalMap('test/expected/hello-world-output.js', function(src) {
+      return src.replace('hello-world-output.map', 'hello-world-output-1.map');
+    });
+    expect( s1.generate() ).equals( e1 );
+
+    var s2 = SourceMapConcat.create({file: 'hello-world-output.js', cache: cache});
+    s2.addFileSource('fixtures/inner/first.js',
+      inlineExternalMap('test/fixtures/inner/first.js'));
+    s2.addFileSource('hello-world.js',
+      inlineExternalMap('test/fixtures/typescript/hello-world-2.js'));
+    s2.addFileSource('fixtures/inner/second.js',
+      inlineExternalMap('test/fixtures/inner/second.js'));
+
+    var e2 = inlineExternalMap('test/expected/hello-world-output.js', function(src) {
+      return src.replace('hello-world-output.map', 'hello-world-output-2.map');
+    });
+    expect( s2.generate() ).equals( e2 );
+  });
 });
 
 // on-the-fly external sourcemap inliner. allows using
 // fast-sourcemap-concat's tests against inline-sourcemap-concat.
-function inlineExternalMap(file) {
+function inlineExternalMap(file, transform) {
   var FastSourcemapConcat = require('fast-sourcemap-concat');
   FastSourcemapConcat.prototype._initializeStream = function() {
     this.source = '';
     this.stream = {write: function(add) { this.source += add; }.bind(this)};
   };
   var src = fs.readFileSync(file, 'utf8');
+  if (transform) {
+    src = transform(src);
+  }
   if (SourceMapConcat.existsIn(src) && !SourceMapConcat.hasInline(src)) {
     var sm = new FastSourcemapConcat({outputFile: file});
     sm.mapCommentCharset = 'utf-8';
