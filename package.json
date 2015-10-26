@@ -6,7 +6,7 @@
   "scripts": {
     "test": "mocha --inline-diffs"
   },
-  "repository": "https://github.com/zertosh/inline-sourcemap-concat",
+  "repository": "zertosh/inline-sourcemap-concat",
   "author": "Andres Suarez <zertosh@gmail.com>",
   "license": "MIT",
   "dependencies": {

@@ -1,6 +1,8 @@
 inline-sourcemap-concat
 -----------------------
 
+[![Build Status](https://travis-ci.org/zertosh/inline-sourcemap-concat.svg?branch=master)](https://travis-ci.org/zertosh/inline-sourcemap-concat)
+
 Concatenate sources and inlined sourcemaps into a new generated sourcemap. Only inline sourcemaps are processed - external sourcemap references are discarded.
 
 # methods
