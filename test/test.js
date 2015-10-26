@@ -139,7 +139,7 @@ describe('fast sourcemap concat', function() {
 
   it("outputs block comments when 'mapCommentType' is 'block'", function() {
     var s = SourceMapConcat.create({mapCommentType: 'block'});
-    expect( s.generate() ).equals('/*# sourceMappingURL=data:application/json;charset:utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbXSwic291cmNlc0NvbnRlbnQiOltdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiIn0= */');
+    expect( s.generate() ).equals('/*# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbXSwic291cmNlc0NvbnRlbnQiOltdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiIn0= */');
   });
 
   it.skip("should warn but tolerate broken sourcemap URL", function() {});
